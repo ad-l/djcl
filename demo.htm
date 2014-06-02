@@ -1,0 +1,547 @@
+<!doctype html>
+<html>
+
+<head>
+<!--
+<script src="src/encoding.js"></script>
+<script src="src/utf8.js"></script>
+<script src="src/hashing.js"></script>
+<script src="src/aes.js"></script>
+<script src="src/bn.js"></script>
+<script src="src/rsa.js"></script>
+<script src="src/djson.js"></script>
+<script src="src/jose.js"></script>
+-->
+<script src="djcl.js"></script>
+
+<script>
+//(function(){ for(var i in sjcl.beware) sjcl.beware[i](); })();
+//var hc = sjcl.codec.hex;
+//r uc = sjcl.codec.utf8String;
+
+var $ = function(s){return document.getElementById(s)}
+var $$ = function(s){return document.querySelectorAll(s)}
+
+window.addEventListener('load', function()
+{
+ var t = $$('.encsel');
+ for(var i=0; i<t.length; i++) encSel(t[i].id, false);
+ for(t = $$('.decsel'), i=0; i<t.length; i++) encSel(t[i].id, true);
+ $('kie').selectedIndex = $('iie').selectedIndex = $('hoe').selectedIndex = 2;
+ crypt(); hash(); loadpk(); rsas();
+});
+
+function decode(s, type)
+{
+ switch(+type)
+ {
+  case 1: return encoding.utf8_decode(s);
+  case 2: return encoding.hstr2astr(s);
+  case 3: return encoding.base64_decode(s);
+  default: return s;
+ }
+}
+
+function encode(s, type)
+{
+ switch(+type)
+ {
+  case 1: return encoding.utf8_encode(s);
+  case 2: return encoding.astr2hstr(s);
+  case 3: return encoding.base64_encode(s);
+  case 4: return encoding.base64_urlencode(s);
+  default: return s;
+ }
+}
+
+function enc()
+{
+ var i = decode($('ein').value, $('eie').value);
+ $('eout').value = encode(i, $('eoe').value);
+}
+
+function swapenc()
+{
+ var i = $('eie').selectedIndex, j = $('eoe').selectedIndex;
+ $('eie').selectedIndex = (j==4?3:j); $('eoe').selectedIndex = i;
+ i = $('ein').value; j = $('eout').value;
+ $('ein').value = j; $('eout').value = i;
+ enc();
+}
+
+function hash()
+{
+ var i = decode($('hin').value, $('hie').value);
+ var k = decode($('mk').value, $('mke').value), h;
+ if($('hmac').checked)
+ {
+  hashing.hmac_hash = $('hf').selectedIndex ? hashing.sha1 : hashing.sha256;
+  $('hout').value = encode(encoding.hstr2astr(hashing.HMAC(k,i)), $('hoe').selectedIndex);
+ }
+ else
+ {
+  h = ($('hf').selectedIndex ? hashing.sha1.hash(i) : hashing.sha256.hash(i));
+  $('hout').value = encode(h, $('hoe').selectedIndex);
+ }
+}
+
+function rnd(n, tid, eid)
+{
+ for(var x='', i=0; i<n; i++)
+  x += encoding.b2a((Math.random()*0x100)&255);
+ $(tid).value = encode(x, $(eid).selectedIndex);
+ crypt();
+}
+
+function crypt()
+{
+ var dir = $('decr').checked;
+ var k = decode($('key').value, $('kie').selectedIndex);
+ aes.setKey(k);
+ var data = decode($('cin').value, $('cie').selectedIndex);
+ var iv = decode($('iv').value, $('iie').selectedIndex);
+ var mode = $('ccm').checked;
+
+ $('cout').className = "";
+
+ if(mode)
+ {
+  var ad = decode($('ad').value, $('aie').selectedIndex);
+
+  if(dir)
+  {
+   var r = aes.CCM_decrypt(data, iv, ad, $('tl').value);
+   $('cout').className = r.valid ? 'aok' : 'abad';
+   $('cout').value = r.valid ? encode(r.data, $('coe').selectedIndex) : "AUTHENTICATION FAILED";
+  }
+  else
+  {
+   $('cout').value = encode(aes.CCM_encrypt(data, iv, ad, $('tl').value), $('coe').selectedIndex);
+  }
+ }
+ else
+ {
+  $('cout').value = encode(aes.CBC(data, iv, dir), $('coe').selectedIndex);
+ }
+}
+
+function swapc()
+{
+ var i = $('cie').selectedIndex, j = $('coe').selectedIndex;
+ $('cie').selectedIndex = (j==4?3:j); $('coe').selectedIndex = i;
+ i = $('cin').value; j = $('cout').value;
+ $('cin').value = j; $('cout').value = i;
+ crypt();
+}
+
+function setpkf()
+{
+ for(i in pk)
+ {
+  if($('pk'+i)) $('pk'+i).value = pk[i];
+ }
+ rsae();
+}
+
+function loadpk()
+{
+ try
+ {
+  pk = parsePK($('pk').value);
+ }
+ catch(e){return}
+ setpkf();
+}
+
+function rsae()
+{
+ var l = decode($('lbl').value, $('relie').selectedIndex);
+ rsa.label = l;
+ var dir = $('red').checked;
+ var sha1 = $('reh').value == '0';
+ rsa.encryption_hash = sha1 ? hashing.sha1 : hashing.sha256;
+ rsa.mgf_hash = sha1 ? hashing.sha1 : hashing.sha256;
+ var d = decode($('rein').value, $('reie').selectedIndex);
+
+ $('reout').className = "";
+ if(dir)
+ {
+  $('reout').value = encode(rsa.decrypt(encoding.astr2hstr(d), pk), $('reoe').selectedIndex);
+  $('reout').className = !rsa.error_code ? 'aok' : 'abad';
+ }
+ else
+ {
+  var e = encode(encoding.hstr2astr(rsa.encrypt(d, pk)), $('reoe').selectedIndex);
+  $('reout').value = e ? e : "INPUT TOO LONG";
+ }
+}
+
+function rsas()
+{
+ var data = decode($('rsin').value, $('rsie').selectedIndex);
+ var mode = $('rspss').checked;
+ var jwt = $('rsjwt').checked;
+ var dir = $('rsv').checked;
+ var salt = decode($('rssalt').value, $('rssie').selectedIndex);
+ var h = $('rsh').selectedIndex;
+ rsa.signature_hash = h ? hashing.sha256 : hashing.sha1;
+ rsa.mgf_hash = h ? hashing.sha256 : hashing.sha1;
+ rsa.salt = salt;
+ $('rsin').className = '';
+
+ if(jwt)
+ {
+  JWT.algorithm = "RS256";
+  if(dir)
+  {
+   h = JWT.parse($('rsout').value, pk);
+   $('rsin').className = h.valid ? "aok" : "abad";
+   $('rsin').value = h.claims;
+  }
+  else
+  {
+   $('rsout').value = JWT.create(data, pk);
+  }
+  return;
+ }
+
+ if(dir)
+ {
+  h = decode($('rsout').value, $('rsoe').selectedIndex);
+  h = encoding.astr2hstr(h);
+  var b = mode ? rsa.verify(data, h, pk) : rsa.verify_pkcs1_v1_5(data, 	h, pk);
+  $('rsin').className = b ? "aok" : "abad";
+ }
+ else
+ {
+  h = mode ? rsa.sign(data, pk) : rsa.sign_pkcs1_v1_5(data, pk);
+  $('rsout').value = encode(encoding.hstr2astr(h), $('rsoe').selectedIndex);
+ }
+}
+
+function swapre()
+{
+ var i = $('reie').selectedIndex, j = $('reoe').selectedIndex;
+ $('reie').selectedIndex = (j==4?3:j); $('reoe').selectedIndex = i;
+ i = $('rein').value; j = $('reout').value;
+ $('rein').value = j; $('reout').value = i;
+ rsae();
+}
+
+function swaprs()
+{
+ $('rsout').disabled = $('rss').checked;
+ rsas();
+}
+
+function encSel(id, dec)
+{
+ var o = $(id).options;
+ o.add(new Option('ASCII', 0));
+ o.add(new Option('Unicode', 1));
+ o.add(new Option('Hexadecimal', 2));
+ o.add(new Option('Base64', 3));
+ if(dec) o.add(new Option('Base64 (url safe)', 4));
+ o.selectedIndex = dec ? 3 : 1;
+}
+
+function _asnhex_getByteLengthOfL_AtObj(s, pos) {
+  if (s.substring(pos + 2, pos + 3) != '8') return 1;
+  var i = parseInt(s.substring(pos + 3, pos + 4));
+  if (i == 0) return -1;
+  if (0 < i && i < 10) return i + 1;
+  return -2;
+}
+
+function _asnhex_getHexOfL_AtObj(s, pos)
+{
+  var len = _asnhex_getByteLengthOfL_AtObj(s, pos);
+  if (len < 1) return '';
+  return s.substring(pos + 2, pos + 2 + len * 2);
+}
+
+function _asnhex_getIntOfL_AtObj(s, pos)
+{
+  var hLength = _asnhex_getHexOfL_AtObj(s, pos);
+  if (hLength == '') return -1;
+  var bi;
+  if (parseInt(hLength.substring(0, 1)) < 8) {
+     bi = parseInt(hLength,16);
+  } else {
+     bi = parseInt(hLength.substring(2), 16);
+  }
+  return bi;
+}
+
+function _asnhex_getStartPosOfV_AtObj(s, pos) 
+{
+  var l_len = _asnhex_getByteLengthOfL_AtObj(s, pos);
+  if (l_len < 0) return l_len;
+  return pos + (l_len + 1) * 2;
+}
+
+function _asnhex_getHexOfV_AtObj(s, pos) 
+{
+  var pos1 = _asnhex_getStartPosOfV_AtObj(s, pos);
+  var len = _asnhex_getIntOfL_AtObj(s, pos);
+  return s.substring(pos1, pos1 + len * 2);
+}
+
+function _asnhex_getPosOfNextSibling_AtObj(s, pos) 
+{
+  var pos1 = _asnhex_getStartPosOfV_AtObj(s, pos);
+  var len = _asnhex_getIntOfL_AtObj(s, pos);
+  return pos1 + len * 2;
+}
+
+function _asnhex_getPosArrayOfChildren_AtObj(h, pos) 
+{
+  var a = new Array();
+  var p0 = _asnhex_getStartPosOfV_AtObj(h, pos);
+  a.push(p0);
+
+  var len = _asnhex_getIntOfL_AtObj(h, pos);
+  var p = p0;
+  var k = 0;
+  while(1)
+  {
+    var pNext = _asnhex_getPosOfNextSibling_AtObj(h, p);
+    if (pNext == null || (pNext - p0  >= (len * 2))) break;
+    if (k >= 200) break;
+
+    a.push(pNext);
+    p = pNext;
+    k++;
+  }
+
+  return a;
+}
+
+parsePK = function(s)
+{
+  s = s.replace("-----BEGIN RSA PRIVATE KEY-----", "");
+  s = s.replace("-----END RSA PRIVATE KEY-----", "");
+  s = s.replace(/[ \n]+/g, "");
+  s = encoding.base64_decode(s);
+  var hPrivateKey = encoding.astr2hstr(s);
+  var v1 = _asnhex_getStartPosOfV_AtObj(hPrivateKey, 0);
+  var n1 = _asnhex_getPosOfNextSibling_AtObj(hPrivateKey, v1);
+  var e1 = _asnhex_getPosOfNextSibling_AtObj(hPrivateKey, n1);
+  var d1 = _asnhex_getPosOfNextSibling_AtObj(hPrivateKey, e1);
+  var p1 = _asnhex_getPosOfNextSibling_AtObj(hPrivateKey, d1);
+  var q1 = _asnhex_getPosOfNextSibling_AtObj(hPrivateKey, p1);
+  var dp1 = _asnhex_getPosOfNextSibling_AtObj(hPrivateKey, q1);
+  var dq1 = _asnhex_getPosOfNextSibling_AtObj(hPrivateKey, dp1);
+  var co1 = _asnhex_getPosOfNextSibling_AtObj(hPrivateKey, dq1);
+  var v =  _asnhex_getHexOfV_AtObj(hPrivateKey, v1);
+  var n =  _asnhex_getHexOfV_AtObj(hPrivateKey, n1);
+  var e =  _asnhex_getHexOfV_AtObj(hPrivateKey, e1);
+  var d =  _asnhex_getHexOfV_AtObj(hPrivateKey, d1);
+  var p =  _asnhex_getHexOfV_AtObj(hPrivateKey, p1);
+  var q =  _asnhex_getHexOfV_AtObj(hPrivateKey, q1);
+  var dp = _asnhex_getHexOfV_AtObj(hPrivateKey, dp1);
+  var dq = _asnhex_getHexOfV_AtObj(hPrivateKey, dq1);
+  var co = _asnhex_getHexOfV_AtObj(hPrivateKey, co1);
+  return {n:(n), e:(e), d:(d), p:(p), q:(q), dmp1:(dp), dmq1:(dq), iqmp:(co)};
+}
+
+</script>
+
+<style type="text/css">
+textarea
+{
+ width:100%;
+ height:50px;
+}
+.aok { background: #ccffcc; }
+.abad { background: #ffcccc; }
+
+h1
+{
+ text-align:center;
+ background: #EFEFEF;
+ border-bottom: 1px solid black;
+ border-top: 1px solid gray;
+}
+
+h2
+{
+ border-bottom: 1px dashed black;
+}
+h2:before{content: "\25B6\00A0";}
+</style>
+</head>
+
+<body>
+<h1>DJCL demo page</h1>
+
+<h2>Encoding and transcoding</h2>
+
+<b>Input encoding:</b> <select class="encsel" id="eie" onchange="enc();"></select> &nbsp;
+<b>Output encoding:</b> <select class="decsel" id="eoe" onchange="enc();"></select> &nbsp;
+<input type="button" value="Swap" onclick="swapenc();" />
+<table width="100%" border="0" cellspacing="10">
+<tr>
+<td width="50%"><textarea placeholder="Input text" id="ein" onkeyup="enc()"></textarea></td>
+<td width="50%"><textarea placeholder="Result" id="eout" disabled="disabled"></textarea></td>
+</tr>
+</table>
+
+<h2>Hashing</h2>
+
+<b>Algorithm:</b> <select id="hf" onchange="hash();"><option value="0" selected="selected">SHA-256</option><option value="1">SHA1</option></select> &nbsp;
+<b>Input encoding:</b> <select class="encsel" id="hie" onchange="hash();"></select> &nbsp;
+<b>Output encoding:</b> <select class="decsel" id="hoe" onchange="hash();"></select>
+<br />
+<input type="checkbox" onchange="hash();" name="hmac" id="hmac" /><b><label for="hmac">HMAC</label></b>
+<input type="text" placeholder="MAC key" id="mk" size="60" onkeyup="hash();" /><select id="mke" class="encsel" onchange="hash();"></select>
+<table width="100%" border="0" cellspacing="10">
+<tr>
+<td width="50%"><textarea placeholder="Input to hash" id="hin" onkeyup="hash();"></textarea></td>
+<td width="50%"><textarea placeholder="Digest" id="hout" disabled="disabled"></textarea></td>
+</tr>
+</table>
+
+<h2>AES encryption</h2>
+
+<p>
+Key: <input type="text" size="80" maxlength="64" id="key" value="0000000000000000000000000000000000000000000000000000000000000000" />
+<select class="encsel" id="kie"></select>
+<input type="button" value="Random" onclick="rnd(32, 'key', 'kie');" />
+<br />
+IV:&nbsp;&nbsp; <input type="text" size="40" maxlength="32" id="iv" value="00000000000000000000000000000000" />
+<select class="encsel" id="iie"></select>
+<input type="button" value="Random" onclick="rnd(16, 'iv', 'iie');" />
+</p>
+
+<input type="radio" onchange="crypt();" name="em" value="1" id="cbc" /><b><label for="cbc">CBC (PKCS#5 padding)</label></b><br />
+<input type="radio" onchange="crypt();" name="em" value="0" checked="checked" id="ccm" /><b><label for="ccm">CCM</label></b> &nbsp;
+
+<input type="text" placeholder="(optional authenticated data)" id="ad" size="60" onkeyup="crypt();" /><select id="aie" class="encsel" onchange="crypt();"></select> &nbsp;
+
+Tag length: <select id="tl" onchange="crypt();"><option value="4">4</option><option value="6">6</option><option value="8" selected="selected">8</option>
+<option value="10">10</option><option value="12">12</option><option value="14">14</option><option value="16">16</option></select>
+
+<br />
+Direction:
+ <input type="radio" id="encr" name="encr" onchange="swapc();" checked="checked" /> <label for="encr">encrypt</label>
+ <input type="radio" id="decr" name="encr" onchange="swapc();" /> <label for="decr">decrypt</label> &nbsp;
+
+Input encoding: <select id="cie" class="encsel" onchange="crypt();"></select> &nbsp;
+Output encoding: <select id="coe" class="decsel" onchange="crypt();"></select>
+
+<table width="100%" border="0" cellspacing="10">
+<tr>
+<td width="50%"><textarea placeholder="Input data" id="cin" onkeyup="crypt()"></textarea></td>
+<td width="50%"><textarea placeholder="Output data" id="cout" disabled="disabled"></textarea></td>
+</tr>
+</table>
+
+<h2>RSA encryption and signature</h2>
+
+<b>PKCS#1 Private key</b> (generate one with openssl genrsa)
+<table width="100%" border="0" cellspacing="10">
+<tr>
+<td width="550"><textarea placeholder="PKCS#1 Private key" id="pk" style="height:100%;">-----BEGIN RSA PRIVATE KEY-----
+MIICXAIBAAKBgQDSbCFDl5kOdzPU0WY5hsIgnOE788JjktUu/qqDbtebr6J2Tj5s
+4QZsgFMu/QXIdkK/qEFJ3kkdJ3MPrEH8ZPkqq2bOLVAC+pWZ9oMWy3ke1NNbtqPb
+xGMXIfPD8rfNn4a8vXhoiJuyLn2hSENw14qBCLn7o8NaNvXehP7IWi/QHwIDAQAB
+AoGAO6O4Hd9G20m/4A7lqWJffTzZvdNOAkjosWQu0gfFhnPWWS++E8AHwRLyALxo
+OjQCoS3AK36cPG4k94k8Ppwj3odMbRMyTMG70ZB1+mXK2OXShdIyFZ3Oa/9/kBmh
+CKZT/6bV3Zr8/Ml+KqrCjm8QCntNLPYkHAo2VB+Er4QhTeECQQD4g8oNUWNbvIrK
+bfT1x9GUPUxe53JYt1D1SJiwL7ApiR6LnoLHw5ApPJUZJxaHngDV8e+WnzY2luLt
+jbwcOnaPAkEA2MKfk7PtCIiqOq8XqrQI7QUz3momW+rs/9eJ5eMyPTa+laqzsv++
+z7KxBHBPUcchX6yMZf4WDLbvRck89rxVcQJACJiudZV6JWM5PdVd4t6dnk4chS/m
+YbE9qK5xMa8EnfszRkseZQCbzQFeevdCLUDG8J+k1QX+3xaLFQKRHjzbewJAHC3x
+IPqbLijWOJrasM6G+olanOef5QM9nGUhAEnxFhQv4rU2d2bYH5hTewg+x5rjs9Ry
+zC+kHjMKGEB5NHp3gQJBAIWCIuTG7lgQjA3DiY+lOWgBH4CQbt1z0sKaQBpTl45C
+E2g/H3V4oJhpxlosAfqlIV8GKfyar3MLXSD+0/YsdW4=
+-----END RSA PRIVATE KEY-----</textarea></td>
+<td align="center" width="60"><input type="button" onclick="loadpk();" value="Parse Key" /></td>
+<td>
+<table width="100%">
+<tr><th colspan="2" align="center">Key details</th></tr>
+<tr>
+ <td width="130">Modulus</td><td><input type="text" disabled="disabled" id="pkn" style="width:100%" /></td>
+</tr>
+<tr>
+ <td>Public exponent</td><td><input type="text" disabled="disabled" id="pke" style="width:100%" /></td>
+</tr>
+<tr>
+ <td>Private exponent</td><td><input type="text" disabled="disabled" id="pkd" style="width:100%" /></td>
+</tr>
+<tr>
+ <td>First prime p</td><td><input type="text" disabled="disabled" id="pkp" style="width:100%" /></td>
+</tr>
+<tr>
+ <td>Second prime q</td><td><input type="text" disabled="disabled" id="pkq" style="width:100%" /></td>
+</tr>
+<tr>
+ <td>d mod p</td><td><input type="text" disabled="disabled" id="pkdmp1" style="width:100%" /></td>
+</tr>
+<tr>
+ <td>d mod q</td><td><input type="text" disabled="disabled" id="pkdmq1" style="width:100%" /></td>
+</tr>
+<tr>
+ <td>q^-1 mod p</td><td><input type="text" disabled="disabled" id="pkiqmp" style="width:100%" /></td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+
+<b>Encryption (OAEP padding)</b> &nbsp;
+<input type="text" placeholder="Optional encryption label" id="lbl" size="30" onkeyup="rsae();" />
+ <select class="encsel" id="relie" onchange="rsae();"></select>
+
+Hash function <select id="reh" onchange="rsae();">
+<option value="0">SHA1</option><option value="1" selected="selected">SHA-256</option></select>
+<br />
+<input type="radio" id="ree" name="red" value="0" checked="checked" onchange="swapre();" /> <label for="ree">encrypt</label>
+<input type="radio" id="red" name="red" value="1" onchange="swapre();" /> <label for="red">decrypt</label> &nbsp;
+
+Input encoding <select id="reie" class="encsel" onchange="rsae();"></select> &nbsp;
+Output encoding <select id="reoe" class="decsel" onchange="rsae();"></select> &nbsp;
+<br />
+
+<table width="100%" border="0" cellspacing="10">
+<tr>
+<td width="50%">
+ <textarea id="rein" placeholder="Input data" onkeyup="rsae();"></textarea>
+</td>
+<td width="50%"><textarea id="reout" disabled="disabled" placeholder="Result"></textarea></td>
+</tr>
+</table>
+
+<b>Signature</b> &nbsp;
+ Input encoding <select id="rsie" class="encsel" onchange="rsas();"></select> &nbsp;
+ Output encoding <select id="rsoe" class="decsel" onchange="rsas();"></select> &nbsp;
+ Hash function <select id="rsh" onchange="rsas();"><option value="0">SHA1</option><option value="1" selected="selected">SHA-256</option></select>
+
+<br />
+<input type="radio" name="rsm" id="rspkcs" onchange="rsas();" /> <label for="rspkcs">PKCS#1v1.5 padding</label>
+
+<br />
+<input type="radio" name="rsm" id="rspss" checked="checked" onchange="rsas();" /> <label for="rspss">PSS padding</label> &nbsp;
+<input type="text" size="50" id="rssalt" placeholder="Optional salt" onkeyup="rsas();" /><select class="encsel" id="rssie"></select>
+<br />
+<input type="radio" name="rsm" id="rsjwt" onchange="rsas();" /> <label for="rsjwt">JWT-RS256 (JSON Web Token)</label>
+
+<table width="100%" border="0" cellspacing="10">
+<tr><td><textarea id="rsin" placeholder="Data to sign" onkeyup="rsas();"></textarea></td></tr>
+</table>
+<div style="margin-top:-10px;">
+Action:
+<input onchange="swaprs();" type="radio" name="rso" id="rss" checked="checked" /> <label for="rss">sign</label>
+<input onchange="swaprs();" type="radio" name="rso" id="rsv" /> <label for="rsv">check signature</label> &nbsp;
+</div>
+<table width="100%" border="0" cellspacing="10">
+<tr><td><textarea id="rsout" placeholder="Signature" disabled="disabled" style="height:30px;" onkeyup="rsas();"></textarea></td></tr>
+</table>
+
+<p style="text-align:center">
+<a href="/">Back to DJS home page</a>
+</p>
+</body>
+</html>
+
