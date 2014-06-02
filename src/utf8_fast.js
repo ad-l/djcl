@@ -1,7 +1,8 @@
 
 /** Speed hack for defensive UTF8 decoding.
- ** Relies on ability to detect tampered Function constructor
- ** (which provides the same functionality as eval)
+ ** Relies on the dirtyness of eval() in ECMA
+ ** and its ability to break syntactic scoping
+ ** under certain circumstances
  **/
 
 (function()
