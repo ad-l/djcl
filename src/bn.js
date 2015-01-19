@@ -462,6 +462,18 @@
    y = (y*(2-x*y%this.BI_DV))%this.BI_DV;
    return (y>0)?this.BI_DV-y:-y;
   },
+  
+/** Extract a single bit from a BigInteger.
+  * @param {BigInteger} x value to extract bit from.
+  * @param {number} n index of the bit to return.
+  * @returns {number} 0 or 1.
+  */
+  getBit: function(x, n)
+  {
+   var i = Math.floor(n / this.BI_DB)
+   if (i >= x.array.length) { return 0 }
+   return (x.array[i&255] >> (n % this.BI_DB)) & 1
+  },
 
 /** Modular exponentiation using Montgomery reduction. 
   * @param {BigInteger} x Value to exponentiate
@@ -525,4 +537,3 @@
    return this.Mreduce(c,m);
   }
  };
-
